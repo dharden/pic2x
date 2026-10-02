@@ -1,7 +1,7 @@
 # pic2x'
 
 React to any message with an image and the bot replies with the image rotated 90°.
-The rotation is done by `rotate_image.m`, running in GNU Octave.
+The rotation is done by `pic2x.m`, running in GNU Octave.
 
 | React | Result |
 |---|---|
@@ -29,5 +29,5 @@ Docker host like Railway, Fly.io, or Render works.
 
 ## Swapping in a different function
 
-`bot.py` calls `rotate_image(in_path, out_path, k)` via `octave-cli --eval`. To run another
+`bot.py` calls `pic2x(in_path, out_path, k)` via `octave-cli --eval`. To run another
 function, change `run_octave()` in `bot.py` and the `ROTATIONS` emoji map.

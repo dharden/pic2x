@@ -10,7 +10,7 @@ ENV PATH="/opt/venv/bin:$PATH" PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY bot.py rotate_image.m ./
+COPY bot.py pic2x.m ./
 
 RUN useradd --create-home bot
 USER bot

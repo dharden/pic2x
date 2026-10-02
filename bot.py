@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import discord
+from PIL import Image
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 BOT_NAME = os.environ.get("BOT_NAME", "pic2x'")
@@ -18,8 +19,8 @@ HERE = Path(__file__).resolve().parent
 
 # Reaction emoji -> k for rot90 (positive = counterclockwise)
 ROTATIONS = {"↪": -1, "↩": 1}
-# Formats Octave can write back as-is; anything else (webp, etc.) comes back as PNG
-KEEP_FORMAT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff"}
+# Formats Octave can write back as-is; anything else (webp, gif, etc.) comes back as PNG
+KEEP_FORMAT = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
 log = logging.getLogger("pic2x")
 
@@ -31,7 +32,7 @@ octave_slots = asyncio.Semaphore(2)  # max concurrent Octave processes
 
 async def run_octave(src: Path, dst: Path, k: int) -> None:
     # Paths are temp files we named ourselves, so they're safe to inline
-    expr = f"rotate_image('{src}', '{dst}', {k})"
+    expr = f"pic2x('{src}', '{dst}', {k})"
     proc = await asyncio.create_subprocess_exec(
         OCTAVE, "--quiet", "--no-window-system", "--eval", expr,
         cwd=HERE,
@@ -57,6 +58,11 @@ async def rotate_attachment(att: discord.Attachment, k: int) -> discord.File:
         src = Path(tmp) / f"in{suffix or '.img'}"
         dst = Path(tmp) / f"out{out_suffix}"
         await att.save(src)
+        if suffix == ".gif":
+            # Octave's GIF reader scrambles small-palette GIFs, so hand it a PNG (first frame)
+            png = Path(tmp) / "in.png"
+            await asyncio.to_thread(lambda: Image.open(src).convert("RGBA").save(png))
+            src = png
         async with octave_slots:
             await run_octave(src, dst, k)
         data = dst.read_bytes()
@@ -79,7 +85,7 @@ async def on_ready():
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if payload.user_id == client.user.id or payload.emoji.is_custom_emoji():
         return
-    k = ROTATIONS.get(payload.emoji.name.replace("️", ""))
+    k = ROTATIONS.get(payload.emoji.name.replace("\ufe0f", ""))
     if k is None:
         return
 
