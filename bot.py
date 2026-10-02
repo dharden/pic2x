@@ -88,9 +88,21 @@ def card_timestamp(created: datetime) -> str:
     return local.strftime("%-m/%-d/%y, %-I:%M %p")
 
 
+async def as_member(guild: discord.Guild | None, user: discord.abc.User) -> discord.abc.User:
+    """Fetched messages carry plain users (no nickname/roles) unless the member is cached,
+    and without the privileged members intent it usually isn't, so look them up."""
+    if guild is None or isinstance(user, discord.Member):
+        return user
+    try:
+        return guild.get_member(user.id) or await guild.fetch_member(user.id)
+    except discord.HTTPException:  # e.g. they've left the server
+        return user
+
+
 async def rotate_message(message: discord.Message, images: list[discord.Attachment], k: int) -> discord.File:
     """Draw the message (text + images) as a Discord-style card and rotate that."""
-    author = message.author
+    author = await as_member(message.guild, message.author)
+    mentions = [await as_member(message.guild, u) for u in message.mentions[:25]]
     color = author.color.to_rgb() if author.color.value else None
     try:
         avatar = await author.display_avatar.with_format("png").with_size(128).read()
@@ -99,7 +111,7 @@ async def rotate_message(message: discord.Message, images: list[discord.Attachme
     # upright each image the way Discord displays it (EXIF orientation) -- also via pic2x.m
     pics = [(await rotate_bytes(await a.read(), Path(a.filename).suffix.lower(), 0))[0] for a in images]
     ctx = Context(
-        users={u.id: u.display_name for u in message.mentions},
+        users={u.id: u.display_name for u in mentions},
         roles={r.id: (r.name, r.color.to_rgb() if r.color.value else None) for r in message.role_mentions},
         channels={c.id: c.name for c in message.channel_mentions},
         tz=TIMEZONE,
