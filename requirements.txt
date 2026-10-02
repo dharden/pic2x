@@ -1,2 +1,4 @@
 discord.py>=2.4,<3
 Pillow>=10,<12
+emoji>=2.10,<3
+tzdata

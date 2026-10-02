@@ -1,12 +1,19 @@
 # pic2x'
 
-React to any message with an image and the bot replies with the image rotated 90°.
-The rotation is done by `pic2x.m`, running in GNU Octave.
+React to a message and the bot replies with it rotated 90°. Every rotation is done by
+`pic2x.m`, running in GNU Octave.
 
 | React | Result |
 |---|---|
 | 🔃 `:arrows_clockwise:` | 90° clockwise |
 | 🔄 `:arrows_counterclockwise:` | 90° counterclockwise |
+
+- **Image-only messages:** each image is rotated at full resolution. Sideways phone
+  photos are handled using their EXIF orientation.
+- **Messages with text:** the message is drawn as a Discord-style card (light theme,
+  avatar, role color, markdown, emoji, mentions, any attached images) by `render.py`
+  and `markdown.py`, and the card is rotated. Card timestamps use `BOT_TIMEZONE`
+  (default `America/New_York`).
 
 ## 1. Create the Discord bot
 

@@ -5,13 +5,20 @@ import io
 import logging
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import discord
 from PIL import Image
 
+from markdown import Context
+from render import render_message
+
 TOKEN = os.environ["DISCORD_TOKEN"]
 BOT_NAME = os.environ.get("BOT_NAME", "pic2x'")
+TIMEZONE = ZoneInfo(os.environ.get("BOT_TIMEZONE", "America/New_York"))  # for card timestamps
+MAX_CHARS = 4000  # Discord's longest (Nitro) message
 OCTAVE = os.environ.get("OCTAVE_BIN", "octave-cli")
 OCTAVE_TIMEOUT = 60  # seconds per image
 MAX_BYTES = 20 * 1024 * 1024
@@ -51,13 +58,13 @@ async def run_octave(src: Path, dst: Path, k: int) -> None:
         raise RuntimeError("\n".join(lines).strip()[-500:] or "Octave failed")
 
 
-async def rotate_attachment(att: discord.Attachment, k: int) -> discord.File:
-    suffix = Path(att.filename).suffix.lower()
+async def rotate_bytes(data: bytes, suffix: str, k: int) -> tuple[bytes, str]:
+    """Run image bytes through pic2x.m. k=0 just applies the photo's EXIF orientation."""
     out_suffix = suffix if suffix in KEEP_FORMAT else ".png"
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / f"in{suffix or '.img'}"
         dst = Path(tmp) / f"out{out_suffix}"
-        await att.save(src)
+        src.write_bytes(data)
         if suffix == ".gif":
             # Octave's GIF reader scrambles small-palette GIFs, so hand it a PNG (first frame)
             png = Path(tmp) / "in.png"
@@ -65,9 +72,49 @@ async def rotate_attachment(att: discord.Attachment, k: int) -> discord.File:
             src = png
         async with octave_slots:
             await run_octave(src, dst, k)
-        data = dst.read_bytes()
+        return dst.read_bytes(), out_suffix
+
+
+async def rotate_attachment(att: discord.Attachment, k: int) -> discord.File:
+    data, out_suffix = await rotate_bytes(await att.read(), Path(att.filename).suffix.lower(), k)
     name = f"{Path(att.filename).stem}_rotated{out_suffix}"
     return discord.File(io.BytesIO(data), filename=name)
+
+
+def card_timestamp(created: datetime) -> str:
+    local, now = created.astimezone(TIMEZONE), datetime.now(TIMEZONE)
+    if local.date() == now.date():
+        return local.strftime("%-I:%M %p")
+    return local.strftime("%-m/%-d/%y, %-I:%M %p")
+
+
+async def rotate_message(message: discord.Message, images: list[discord.Attachment], k: int) -> discord.File:
+    """Draw the message (text + images) as a Discord-style card and rotate that."""
+    author = message.author
+    color = author.color.to_rgb() if author.color.value else None
+    try:
+        avatar = await author.display_avatar.with_format("png").with_size(128).read()
+    except discord.HTTPException:
+        avatar = None
+    # upright each image the way Discord displays it (EXIF orientation) -- also via pic2x.m
+    pics = [(await rotate_bytes(await a.read(), Path(a.filename).suffix.lower(), 0))[0] for a in images]
+    ctx = Context(
+        users={u.id: u.display_name for u in message.mentions},
+        roles={r.id: (r.name, r.color.to_rgb() if r.color.value else None) for r in message.role_mentions},
+        channels={c.id: c.name for c in message.channel_mentions},
+        tz=TIMEZONE,
+    )
+    card = await asyncio.to_thread(
+        render_message, author.display_name, color, avatar,
+        card_timestamp(message.created_at), message.content.strip()[:MAX_CHARS], pics, ctx,
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        src, dst = Path(tmp) / "in.png", Path(tmp) / "out.png"
+        await asyncio.to_thread(card.save, src)
+        async with octave_slots:
+            await run_octave(src, dst, k)
+        data = dst.read_bytes()
+    return discord.File(io.BytesIO(data), filename="message_rotated.png")
 
 
 @client.event
@@ -95,17 +142,25 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         a for a in message.attachments
         if (a.content_type or "").startswith("image/") and a.size <= MAX_BYTES
     ][:10]
-    if not images:
+    has_text = bool(message.content.strip())
+    if not images and not has_text:
         return
 
     files, errors = [], []
     async with channel.typing():
-        for att in images:
+        if has_text:  # text (+ any images) -> one rotated Discord-style card
             try:
-                files.append(await rotate_attachment(att, k))
+                files.append(await rotate_message(message, images, k))
             except Exception as e:
-                log.exception("Failed on %s", att.filename)
-                errors.append(f"`{att.filename}`: {e}")
+                log.exception("Failed on message %s", message.id)
+                errors.append(f"the message: {e}")
+        else:  # images only -> rotate each at full resolution
+            for att in images:
+                try:
+                    files.append(await rotate_attachment(att, k))
+                except Exception as e:
+                    log.exception("Failed on %s", att.filename)
+                    errors.append(f"`{att.filename}`: {e}")
 
     text = "\n".join(f"Couldn't rotate {err}" for err in errors) or None
     await message.reply(content=text, files=files, mention_author=False)
