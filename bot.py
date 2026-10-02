@@ -1,4 +1,4 @@
-"""pic2x': a Discord bot. React to an image with ↪️ or ↩️ and it gets rotated by Octave."""
+"""pic2x': a Discord bot. React to an image with 🔃 or 🔄 and it gets rotated by Octave."""
 
 import asyncio
 import io
@@ -18,7 +18,7 @@ MAX_BYTES = 20 * 1024 * 1024
 HERE = Path(__file__).resolve().parent
 
 # Reaction emoji -> k for rot90 (positive = counterclockwise)
-ROTATIONS = {"↪": -1, "↩": 1}
+ROTATIONS = {"🔃": -1, "🔄": 1}  # 🔃 :arrows_clockwise:, 🔄 :arrows_counterclockwise:
 # Formats Octave can write back as-is; anything else (webp, gif, etc.) comes back as PNG
 KEEP_FORMAT = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 

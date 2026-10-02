@@ -5,8 +5,8 @@ The rotation is done by `pic2x.m`, running in GNU Octave.
 
 | React | Result |
 |---|---|
-| ↪️ | 90° clockwise |
-| ↩️ | 90° counterclockwise |
+| 🔃 `:arrows_clockwise:` | 90° clockwise |
+| 🔄 `:arrows_counterclockwise:` | 90° counterclockwise |
 
 ## 1. Create the Discord bot
 
